@@ -25,12 +25,22 @@ class listeOgrenciEkran(Frame):
         self.tree.heading("Doğum Tarihi", text="Doğum Tarihi")
         self.tree.pack(fill="both", expand=True)
 
+        self.bind("<Configure>", self.resize_columns)
+
         self.refresh_data()
 
         # Alt butonlar
         Button(self, text="Güncelle", command=self.guncelle).pack(side=LEFT, padx=10, pady=10)
         Button(self, text="Sil", command=self.sil).pack(side=LEFT, padx=10, pady=10)
         Button(self, text="Yenile", command=self.refresh_data).pack(side=LEFT, padx=10, pady=10)
+
+    def resize_columns(self, event):
+        total_width = self.tree.winfo_width()
+        num_columns = len(self.tree["columns"])
+        column_width = total_width // num_columns
+
+        for column in self.tree["columns"]:
+            self.tree.column(column, width=column_width)
 
     def refresh_data(self):
         """Veritabanından verileri al ve Treeview'e yükle."""
@@ -124,7 +134,7 @@ class listeOgrenciEkran(Frame):
             if not new_surname:
                 return
 
-            new_birthdate = custom_dialog("Güncelle", "Yeni doğum tarihi (YYYY-MM-DD):")
+            new_birthdate = custom_dialog("Güncelle", "Yeni doğum tarihi (GG-AA-YYYY):")
             if not new_birthdate:
                 return
 

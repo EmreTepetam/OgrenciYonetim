@@ -3,130 +3,189 @@ from tkinter.ttk import Treeview, Combobox
 import sqlite3
 from tkinter import messagebox
 
+
 class NotGirisEkran(Frame):
     def __init__(self, parent):
         super().__init__(parent)
 
-        # Öğrenci listesi
-        self.tree = Treeview(self, columns=("ID", "İsim", "Soyisim"), show="headings")
-        self.tree.heading("ID", text="ID")
-        self.tree.heading("İsim", text="İsim")
-        self.tree.heading("Soyisim", text="Soyisim")
-        self.tree.pack(fill="both", expand=True)
-
-        # Seçim olayını bağla
-        self.tree.bind("<<TreeviewSelect>>", self.refresh_notlar)
-
         # Ders seçimi
         Label(self, text="Ders").pack(pady=5)
-        self.ders_combobox = Combobox(self, state="readonly")
+        self.ders_combobox = Combobox(self, state="readonly", values=["mat1 Matematik", "fizik1 Fizik", "turkce1 Türkçe"])
         self.ders_combobox.pack(pady=5)
+        self.ders_combobox.current(0)
+        self.ders_combobox.bind("<<ComboboxSelected>>", self.filter_ders)
 
-        # Not türü seçimi
-        Label(self, text="Not Türü").pack(pady=5)
-        self.not_turu_combobox = Combobox(self, state="readonly", values=["Vize", "Final"])
-        self.not_turu_combobox.pack(pady=5)
+        # Öğrenci not girişi tablosu
+        self.tree = Treeview(self, columns=("Öğrenci No", "İsim", "Soyisim", "Vize", "Final", "Proje", "Başarı Notu", "Durum"), show="headings")
+        self.tree.heading("Öğrenci No", text="Öğrenci No")
+        self.tree.heading("İsim", text="İsim")
+        self.tree.heading("Soyisim", text="Soyisim")
+        self.tree.heading("Vize", text="Vize")
+        self.tree.heading("Final", text="Final")
+        self.tree.heading("Proje", text="Proje")
+        self.tree.heading("Başarı Notu", text="Başarı Notu")
+        self.tree.heading("Durum", text="Durum")
+        self.tree.pack(fill="both", expand=True)
 
-        # Not girişi
-        Label(self, text="Not Değeri").pack(pady=5)
-        self.not_degeri_entry = Entry(self)
-        self.not_degeri_entry.pack(pady=5)
+        # Alt butonlar (Bir kez tanımlanıyor)
+        button_frame = Frame(self)
+        button_frame.pack(fill="x")
+        Button(button_frame, text="Hesapla", command=self.hesapla).pack(side=LEFT, padx=10, pady=10)
+        Button(button_frame, text="Kaydet", command=self.kaydet).pack(side=LEFT, padx=10, pady=10)
 
-        Button(self, text="Not Ekle", command=self.not_ekle).pack(pady=10)
+        # Dinamik sütun boyutlandırma
+        self.bind("<Configure>", self.resize_columns)
 
-        # Not listeleme ekranı
-        self.not_tree = Treeview(self, columns=("Ders", "Not Türü", "Not Değeri"), show="headings")
-        self.not_tree.heading("Ders", text="Ders")
-        self.not_tree.heading("Not Türü", text="Not Türü")
-        self.not_tree.heading("Not Değeri", text="Not Değeri")
-        self.not_tree.pack(fill="both", expand=True)
-
+        # Öğrenci verilerini yükle
         self.refresh_student_data()
-        self.refresh_ders_data()
+
+    def resize_columns(self, event):
+        """Tablonun sütun genişliklerini dinamik olarak ayarla."""
+        total_width = self.tree.winfo_width()
+        num_columns = len(self.tree["columns"])
+        if num_columns > 0:
+            column_width = total_width // num_columns
+            for column in self.tree["columns"]:
+                self.tree.column(column, width=column_width)
+                self.tree.bind("<Double-1>", self.edit_cell)  # Hücreye çift tıklama ile düzenleme
 
     def refresh_student_data(self):
-        """Veritabanından öğrenci bilgilerini getir."""
+        """Tüm öğrencileri güncel verilerle yeniler."""
+        selected_ders = self.ders_combobox.get().split(" ")[0]  # Ders ID'si
         try:
             connection = sqlite3.connect('ogrenci_yonetim.db')
             cursor = connection.cursor()
-            cursor.execute("SELECT id, isim, soyisim FROM ogrenciler")
+
+            # Seçilen dersin öğrencilerini getir
+            cursor.execute("""
+            SELECT ogrenciler.ogrenci_no, ogrenciler.isim, ogrenciler.soyisim, 
+                vize, final, proje, genel_ort, durum
+            FROM ogrenciler
+            LEFT JOIN notlar ON ogrenciler.ogrenci_no = notlar.ogrenci_id AND notlar.ders_id = ?
+            WHERE ogrenciler.ogrenci_no IN (
+                SELECT ogrenci_id FROM ogrenci_ders WHERE ders_id = ?
+            )
+            """, (selected_ders, selected_ders))
+
             rows = cursor.fetchall()
 
             self.tree.delete(*self.tree.get_children())  # Mevcut verileri temizle
             for row in rows:
                 self.tree.insert("", "end", values=row)
+
         except sqlite3.Error as e:
             print(f"Veritabanı hatası: {e}")
         finally:
             connection.close()
 
-    def refresh_ders_data(self):
-        """Veritabanından ders bilgilerini getir."""
+
+    def filter_ders(self, event):
+        """Seçilen derse göre filtreleme yap."""
+        selected_ders = self.ders_combobox.get().split(" ")[0]  # Ders ID'si
         try:
             connection = sqlite3.connect('ogrenci_yonetim.db')
             cursor = connection.cursor()
-            cursor.execute("SELECT id, ders_adi FROM dersler")
+
+            # Öğrencileri ve notlarını seçilen derse göre filtrele
+            cursor.execute("""
+            SELECT ogrenciler.ogrenci_no, ogrenciler.isim, ogrenciler.soyisim, 
+                vize, final, proje, genel_ort, durum
+            FROM ogrenciler
+            LEFT JOIN notlar ON ogrenciler.ogrenci_no = notlar.ogrenci_id AND notlar.ders_id = ?
+            WHERE ogrenciler.ogrenci_no IN (
+                SELECT ogrenci_id FROM ogrenci_ders WHERE ders_id = ?
+            )
+            """, (selected_ders, selected_ders))
+
             rows = cursor.fetchall()
 
-            ders_listesi = [f"{row[0]} - {row[1]}" for row in rows]
-            self.ders_combobox['values'] = ders_listesi
+            self.tree.delete(*self.tree.get_children())  # Mevcut verileri temizle
+            for row in rows:
+                self.tree.insert("", "end", values=row)
+
         except sqlite3.Error as e:
             print(f"Veritabanı hatası: {e}")
         finally:
             connection.close()
 
-    def not_ekle(self):
-        """Seçili öğrenciye not ekle."""
-        try:
-            selected_item = self.tree.selection()[0]
-            ogrenci_id = self.tree.item(selected_item)['values'][0]
 
-            ders_id = self.ders_combobox.get().split(" - ")[0]
-            not_turu = self.not_turu_combobox.get()
-            not_degeri = self.not_degeri_entry.get()
+    def edit_cell(self, event):
+        """Bir hücreye çift tıklama ile not girişi yap."""
+        item = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
 
-            if not ders_id or not not_turu or not not_degeri:
-                messagebox.showerror("Hata", "Tüm alanları doldurun!")
+        if column not in ["#4", "#5", "#6"]:  # Vize, Final, Proje sütunları
+            return
+
+        # Mevcut değerleri al
+        current_value = self.tree.item(item, "values")[int(column[1]) - 1]
+
+        # Input penceresi aç
+        input_popup = Toplevel(self)
+        input_popup.title("Not Girişi")
+        input_popup.geometry("200x100")
+        input_popup.transient(self)
+        input_popup.grab_set()
+
+        Label(input_popup, text="Yeni Not Değeri:").pack(pady=5)
+        entry = Entry(input_popup)
+        entry.insert(0, current_value)
+        entry.pack(pady=5)
+
+        def save_input():
+            new_value = entry.get()
+            if not new_value.isdigit():
+                messagebox.showerror("Hata", "Not sadece sayısal olabilir!")
                 return
+            # Yeni değeri tabloya ekle
+            values = list(self.tree.item(item, "values"))
+            values[int(column[1]) - 1] = new_value
+            self.tree.item(item, values=values)
+            input_popup.destroy()
 
+        Button(input_popup, text="Kaydet", command=save_input).pack(pady=5)
+
+    def hesapla(self):
+        """Başarı notunu hesapla ve durumu belirle."""
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            try:
+                vize = float(values[3]) if values[3] else 0
+                final = float(values[4]) if values[4] else 0
+                proje = float(values[5]) if values[5] else 0
+
+                # Vize ve final ortalaması
+                vize_final_ort = (vize * 0.2) + (final * 0.8)
+                genel_ort = (vize_final_ort + proje) / 2
+
+                # Durum belirleme
+                if genel_ort < 50:
+                    durum = "Kaldı"
+                else:
+                    durum = "Geçti"
+
+                # Tabloyu güncelle
+                self.tree.item(item, values=(values[0], values[1], values[2], vize, final, proje, round(genel_ort, 2), durum))
+            except ValueError:
+                messagebox.showerror("Hata", "Notlar sayısal değer olmalıdır!")
+
+    def kaydet(self):
+        """Girilen notları veritabanına kaydet."""
+        try:
             connection = sqlite3.connect('ogrenci_yonetim.db')
             cursor = connection.cursor()
-            cursor.execute("""
-            INSERT INTO notlar (ogrenci_id, ders_id, not_turu, not_degeri)
-            VALUES (?, ?, ?, ?)
-            """, (ogrenci_id, ders_id, not_turu, float(not_degeri)))
-            connection.commit()
 
-            messagebox.showinfo("Başarılı", "Not başarıyla eklendi!")
-            self.refresh_notlar()  # Notları yenile
-        except IndexError:
-            messagebox.showerror("Hata", "Lütfen bir öğrenci seçin!")
+            selected_ders = self.ders_combobox.get().split(" ")[0]  # Ders ID'si
+
+            for item in self.tree.get_children():
+                values = self.tree.item(item, "values")
+                cursor.execute("""
+                INSERT OR REPLACE INTO notlar (ogrenci_id, ders_id, vize, final, proje, genel_ort, durum)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (values[0], selected_ders, values[3], values[4], values[5], values[6], values[7]))
+            connection.commit()
+            messagebox.showinfo("Başarılı", "Notlar kaydedildi!")
         except sqlite3.Error as e:
             messagebox.showerror("Hata", f"Veritabanı hatası: {e}")
-        finally:
-            connection.close()
-
-    def refresh_notlar(self, event=None):
-        """Seçili öğrencinin notlarını yenile."""
-        try:
-            selected_item = self.tree.selection()[0]
-            ogrenci_id = self.tree.item(selected_item)['values'][0]
-
-            connection = sqlite3.connect('ogrenci_yonetim.db')
-            cursor = connection.cursor()
-            cursor.execute("""
-            SELECT ders_id, not_turu, not_degeri
-            FROM notlar
-            WHERE ogrenci_id = ?
-            """, (ogrenci_id,))
-            rows = cursor.fetchall()
-
-            self.not_tree.delete(*self.not_tree.get_children())  # Mevcut verileri temizle
-            for row in rows:
-                self.not_tree.insert("", "end", values=row)
-        except IndexError:
-            self.not_tree.delete(*self.not_tree.get_children())  # Seçim yoksa tabloyu temizle
-        except sqlite3.Error as e:
-            print(f"Veritabanı hatası: {e}")
         finally:
             connection.close()
