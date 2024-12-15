@@ -1,7 +1,7 @@
 import sqlite3
 
 def create_tables():
-    """Veritabanında gerekli tabloları oluşturur."""
+    """Veritabanında gerekli tabloları oluşturur"""
     connection = sqlite3.connect('ogrenci_yonetim.db')
     cursor = connection.cursor()
 
@@ -9,17 +9,18 @@ def create_tables():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS dersler (
         id TEXT PRIMARY KEY,
-        ders_adi TEXT NOT NULL
+        ders_adi TEXT NOT NULL UNIQUE
     )
     """)
 
+    # Öğrenci ve ders eşleştirme tablosunu oluştur    
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS ogrenci_ders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ogrenci_id TEXT NOT NULL,  -- Öğrenci numarası
-        ders_id TEXT NOT NULL,     -- Ders kimliği
-        FOREIGN KEY (ogrenci_id) REFERENCES ogrenciler (ogrenci_no),
-        FOREIGN KEY (ders_id) REFERENCES dersler (id)
+        ogrenci_id INTEGER,
+        ders_id TEXT,
+        PRIMARY KEY (ogrenci_id, ders_id),
+        FOREIGN KEY (ogrenci_id) REFERENCES ogrenciler(ogrenci_no),
+        FOREIGN KEY (ders_id) REFERENCES dersler(id)
     )
     """)
 
@@ -59,11 +60,19 @@ def create_tables():
     )
     """)
 
+    # Takvim tablosunu oluştur
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS etkinlikler (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tarih TEXT NOT NULL,
+        aciklama TEXT NOT NULL
+    )
+    """)
+
     # Örnek dersler ekle
     cursor.execute("INSERT OR IGNORE INTO dersler (id, ders_adi) VALUES ('mat1', 'Matematik')")
     cursor.execute("INSERT OR IGNORE INTO dersler (id, ders_adi) VALUES ('fizik1', 'Fizik')")
     cursor.execute("INSERT OR IGNORE INTO dersler (id, ders_adi) VALUES ('turkce1', 'Türkçe')")
-
     connection.commit()
     connection.close()
     print("Tablolar oluşturuldu ve örnek veriler eklendi.")
@@ -73,7 +82,6 @@ def reset_notlar_table():
     """Notlar tablosunu sıfırlar ve yeniden oluşturur."""
     connection = sqlite3.connect('ogrenci_yonetim.db')
     cursor = connection.cursor()
-
     cursor.execute("DROP TABLE IF EXISTS notlar")
     cursor.execute("""
     CREATE TABLE notlar (
@@ -96,4 +104,5 @@ def reset_notlar_table():
 
 
 if __name__ == "__main__":
+    # Tabloları oluştur ve örnek verileri ekle
     create_tables()
